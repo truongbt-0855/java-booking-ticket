@@ -1,2 +1,41 @@
 server:
   port: 8080
+
+
+resilience4j.ratelimiter:
+  instances:
+    backendA:
+      limitForPeriod: 2
+      limitRefreshPeriod: 10s
+      timeoutDuration: 0
+      registerHealthIndicator: true
+      eventConsumerBufferSize: 100
+    backendB:
+      limitForPeriod: 5
+      limitRefreshPeriod: 10s
+      timeoutDuration: 3s
+resilience4j.circuitbreaker:
+  configs:
+    default:
+      slidingWindowSize: 10
+      permittedNumberOfCallsInHalfOpenState: 3
+      waitDurationInOpenState: 10000
+      failureRateThreshold: 60
+      eventConsumerBufferSize: 10
+      registerHealthIndicator: true
+  instances:
+    checkRandom:
+      baseConfig: default
+      waitDurationInOpenState: 5000
+management:
+  health:
+    circuitbreakers:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include:
+          - '*'
+  endpoint:
+    health:
+      show-details: always
