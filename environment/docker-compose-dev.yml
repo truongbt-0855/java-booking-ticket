@@ -1,0 +1,35 @@
+version: '3.2'
+
+networks:
+  pre-event-network:
+    driver: bridge
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: pre-event-mysql
+    volumes:
+      - ./data/db_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d/ # nếu bạn không phải devops vui lòng contact anonystick. tks
+    command: [
+      '--character-set-server=utf8mb4',
+      '--collation-server=utf8mb4_unicode_ci',
+      '--skip-character-set-client-handshake'  # Buộc tất cả kết nối sử dụng utf8mb4
+    ]
+    environment:
+      MYSQL_ROOT_PASSWORD: root1234
+      MYSQL_DATABASE: ticket
+      MYSQL_PASSWORD: root1234
+    ports:
+      - "3316:3306"
+    networks:
+      - pre-event-network
+
+  #Redis
+  redis:
+    container_name: pre-event-redis
+    image: redislabs/redismod:latest
+    ports:
+      - "6319:6379"
+    networks:
+      - pre-event-network

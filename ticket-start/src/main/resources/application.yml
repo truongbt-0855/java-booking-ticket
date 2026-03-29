@@ -1,41 +1,116 @@
+# ============================================================
+# Cấu hình server
+# ============================================================
 server:
-  port: 8080
+  port: 8080  # Cổng HTTP mà ứng dụng Spring Boot lắng nghe
 
+spring:
+  config:
+    import: optional:file:.env[.properties]  # Tự động đọc file .env ở thư mục chạy app (nếu có)
 
-resilience4j.ratelimiter:
-  instances:
-    backendA:
-      limitForPeriod: 2
-      limitRefreshPeriod: 10s
-      timeoutDuration: 0
-      registerHealthIndicator: true
-      eventConsumerBufferSize: 100
-    backendB:
-      limitForPeriod: 5
-      limitRefreshPeriod: 10s
-      timeoutDuration: 3s
-resilience4j.circuitbreaker:
-  configs:
-    default:
-      slidingWindowSize: 10
-      permittedNumberOfCallsInHalfOpenState: 3
-      waitDurationInOpenState: 10000
-      failureRateThreshold: 60
-      eventConsumerBufferSize: 10
-      registerHealthIndicator: true
-  instances:
-    checkRandom:
-      baseConfig: default
-      waitDurationInOpenState: 5000
+  # ============================================================
+  # Thông tin ứng dụng
+  # ============================================================
+  application:
+    name: booking-ticket  # Tên service (dùng trong logs, tracing, service discovery) — đã đổi từ "zzz.com"
+
+  # ============================================================
+  # Cấu hình kết nối cơ sở dữ liệu MySQL + HikariCP connection pool
+  # ============================================================
+  datasource:
+    url: jdbc:mysql://localhost:3316/ticket  # port 3316 = host port docker-compose map từ container 3306 — tên DB phải khớp với MYSQL_DATABASE trong docker-compose
+    username: root
+    password: ${DB_PASSWORD}  # Lấy mật khẩu DB từ biến môi trường DB_PASSWORD (không hard-code mật khẩu yếu trong source)
+    driver-class-name: com.mysql.cj.jdbc.Driver  # Driver JDBC cho MySQL 8+
+    type: com.zaxxer.hikari.HikariDataSource  # Sử dụng HikariCP làm connection pool (mặc định của Spring Boot)
+    hikari:
+      maximum-pool-size: 20  # Tổng số kết nối tối đa trong pool — tăng nếu có nhiều request đồng thời
+      minimum-idle: 5         # Số kết nối tối thiểu luôn được duy trì sẵn sàng
+
+  # ============================================================
+  # Cấu hình JPA / Hibernate
+  # ============================================================
+  jpa:
+    database: mysql  # Dialect database target
+    show-sql: true   # In SQL ra console — tiện debug khi dev local
+    hibernate:
+      ddl-auto: none  # Không tự động tạo/sửa schema — đúng cho production, dùng Flyway/Liquibase để quản lý migration
+    properties:
+      hibernate:
+        format_sql: true       # Format SQL nhiều dòng cho dễ đọc khi show-sql = true
+        use_sql_comments: true # Thêm comment vào SQL để dễ trace nguồn gốc query
+
+  # ============================================================
+  # Cấu hình JSON serialization (Jackson)
+  # ============================================================
+  jackson:
+    serialization:
+      indent-output: false  # Tắt pretty-print JSON để tiết kiệm băng thông — bật lên (true) khi cần debug response
+
+  # ============================================================
+  # Cấu hình Redis (dùng Lettuce client)
+  # ============================================================
+  data:
+    redis:
+      host: 127.0.0.1  # Host của Redis server
+      port: 6319        # port 6319 = host port docker-compose map từ container 6379 — đúng
+      password: ""      # Mật khẩu Redis (để trống nếu không cấu hình requirepass)
+      connect-timeout: 30000  # Timeout kết nối tới Redis (milliseconds) — 30 giây
+      lettuce:
+        pool:
+          max-active: 8   # Số kết nối active tối đa (-1 = không giới hạn)
+          max-idle: 8     # Số kết nối idle tối đa trong pool
+          min-idle: 0     # Số kết nối idle tối thiểu luôn được giữ
+          max-wait: 3000ms  # Chờ tối đa 3 giây để lấy kết nối từ pool, nếu quá thời gian sẽ ném exception thay vì treo thread mãi
+
+# ============================================================
+# Cấu hình Resilience4j — Rate Limiter & Circuit Breaker
+# ============================================================
+resilience4j:
+
+  # --- Rate Limiter: giới hạn số request trong một khoảng thời gian ---
+  ratelimiter:
+    instances:
+      backendA:
+        limitForPeriod: 2         # Tối đa 2 request được phép trong mỗi chu kỳ
+        limitRefreshPeriod: 10s   # Chu kỳ refresh limit là 10 giây
+        timeoutDuration: 0        # Không chờ nếu vượt limit — trả lỗi ngay lập tức
+        registerHealthIndicator: true  # Expose trạng thái rate limiter qua /actuator/health
+        eventConsumerBufferSize: 100   # Kích thước buffer lưu các event (cho monitoring)
+      backendB:
+        limitForPeriod: 5         # Tối đa 5 request trong mỗi chu kỳ
+        limitRefreshPeriod: 10s   # Chu kỳ refresh là 10 giây
+        timeoutDuration: 3s       # Chờ tối đa 3 giây để được cấp phép trước khi báo lỗi
+
+  # --- Circuit Breaker: tự động ngắt mạch khi backend lỗi nhiều ---
+  circuitbreaker:
+    configs:
+      default:  # Config mặc định, các instance có thể kế thừa
+        slidingWindowSize: 10                    # Xét 10 lần gọi gần nhất để tính tỷ lệ lỗi
+        permittedNumberOfCallsInHalfOpenState: 3 # Cho phép 3 request thử nghiệm khi ở trạng thái HALF_OPEN
+        waitDurationInOpenState: 10000ms         # Thời gian ở trạng thái OPEN trước khi chuyển sang HALF_OPEN (10 giây)
+        failureRateThreshold: 60                 # Ngắt mạch khi tỷ lệ lỗi >= 60%
+        eventConsumerBufferSize: 10              # Buffer lưu event circuit breaker
+        registerHealthIndicator: true            # Expose trạng thái circuit breaker qua /actuator/health
+    instances:
+      checkRandom:
+        baseConfig: default           # Kế thừa toàn bộ config từ "default"
+        waitDurationInOpenState: 5000ms  # Override: chỉ chờ 5 giây ở trạng thái OPEN (nhanh hơn default)
+
+# ============================================================
+# Cấu hình Spring Boot Actuator (monitoring & health check)
+# ============================================================
 management:
   health:
     circuitbreakers:
-      enabled: true
+      enabled: true  # Hiển thị trạng thái các circuit breaker trong /actuator/health
   endpoints:
     web:
       exposure:
         include:
-          - '*'
+          - health
+          - info
+          - metrics
   endpoint:
     health:
-      show-details: always
+      show-details: always  # Hiển thị chi tiết health check — nên đặt "when-authorized" ở production

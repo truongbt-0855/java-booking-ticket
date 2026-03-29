@@ -1,4 +1,4 @@
-package org.ticket.controller.resource;
+package org.ticket.controller.http;
 
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
