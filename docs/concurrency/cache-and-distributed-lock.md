@@ -2,6 +2,102 @@
 
 Ref: https://www.anhdh.net/blog/redis-distributed-locking
 
+## 0. Kiến trúc 3 lớp phòng thủ
+
+```
+500,000 req/s (flash sale, bot, spike traffic)
+      │
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│                      API Gateway                        │
+│           (Nginx / Kong / AWS API Gateway)              │
+│                                                         │
+│  - IP rate limit   : chan bot, DDoS                     │
+│  - Authentication  : loc request khong hop le           │
+│  - Load balancing  : phan tan sang cac instance         │
+└─────────────────────────────────────────────────────────┘
+      │
+      │  100,000 req/s (da loc bot, invalid token)
+      ▼
+╔═════════════════════════════════════════════════════════╗
+║        LOP 1 — Rate Limiter + Circuit Breaker           ║
+║                    (Resilience4j)                       ║
+║                                                         ║
+║  Rate Limiter:                                          ║
+║    100,000 req den — moi user chi duoc 10 req/s         ║
+║    80,000 req bi reject → tra ve 429 Too Many Requests  ║
+║                                                         ║
+║  Circuit Breaker:                                       ║
+║    Neu loi downstream > 60% → mo circuit → fail fast    ║
+║    → tranh cascade failure lan rong toan he thong       ║
+╚═════════════════════════════════════════════════════════╝
+      │
+      │  20,000 req/s duoc phep vao service
+      ▼
+╔═════════════════════════════════════════════════════════╗
+║                 LOP 2 — Local Cache                     ║
+║                      (Caffeine)                         ║
+║                                                         ║
+║  Cache trong RAM cua tung service instance              ║
+║  Latency ~microseconds, khong qua network               ║
+║                                                         ║
+║  Dung cho   : data it thay doi (config, category...)    ║
+║  Khong dung : ton kho, gia — moi instance cache rieng   ║
+║               → inconsistent giua cac instance          ║
+║                                                         ║
+║  18,000 req hit local cache → tra ve ngay               ║
+╚═════════════════════════════════════════════════════════╝
+      │
+      │  2,000 req/s cache miss → tiep tuc xuong
+      ▼
+╔═════════════════════════════════════════════════════════╗
+║        LOP 3 — Redis Cache + Distributed Lock           ║
+║                   (Redis + Redisson)                    ║
+║                                                         ║
+║  Redis Cache:                                           ║
+║    Cache tap trung, dung chung giua tat ca instances    ║
+║    Latency ~1ms                                         ║
+║    1,800 req hit Redis → tra ve                         ║
+║                                                         ║
+║  Distributed Lock (khi cache miss):                     ║
+║    200 req miss Redis → tranh lock dong thoi            ║
+║    → 1 req lay lock → vao DB → set Redis → release      ║
+║    → 199 req cho → doc Redis (da co data)               ║
+║    → DB chi nhan 1 query thay vi 200                    ║
+╚═════════════════════════════════════════════════════════╝
+      │
+      │  ~1 query/cache-key xuong DB
+      ▼
+┌─────────────────────────────────────────────────────────┐
+│                       Database                          │
+│                                                         │
+│  Chi nhan query khi ca 3 lop deu miss                   │
+│  Flash sale 500k req → DB chi nhan vai chuc query       │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Tóm tắt
+
+| Lớp | Vào | Ra | Lọc được | Công nghệ |
+|-----|-----|----|----------|-----------|
+| API Gateway | 500,000 | 100,000 | Bot, DDoS, invalid auth | Nginx / Kong |
+| Rate Limiter | 100,000 | 20,000 | Request vượt quota user | Resilience4j |
+| Local Cache | 20,000 | 2,000 | Data hot, ít thay đổi | Caffeine |
+| Redis Cache | 2,000 | 200 | Phần lớn read request | Redis |
+| Distributed Lock | 200 | 1 | Cache stampede | Redisson |
+| **Database** | **~1** | — | — | MySQL |
+
+> Số liệu chỉ mang tính minh họa, tỷ lệ thực tế phụ thuộc vào cache hit rate và config rate limit của từng hệ thống.
+
+### Quy tắc đặt từng lớp
+
+- **Rate Limiter** — đặt ở tầng **Controller/Filter**, chặn trước khi vào business logic
+- **Circuit Breaker** — đặt bao quanh **lời gọi đến dependency** (DB, external service)
+- **Local Cache** — chỉ dùng cho data **ít thay đổi** (config, danh mục...), không dùng cho tồn kho
+- **Distributed Lock** — chỉ đặt ở **điểm ghi** hoặc khi cache miss, không wrap toàn bộ flow
+
+---
+
 ## 1. Vấn đề
 
 ### Race Condition khi nhiều server chạy song song

@@ -118,3 +118,19 @@ services:
       - mysql  # Đảm bảo MySQL start trước mysqld-exporter
     networks:
       - pre-event-network
+
+  redis-exporter:
+    container_name: pre-event-redis-exporter
+    image: oliver006/redis_exporter:latest
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis:6379    # Tên container Redis + port nội bộ (không dùng host port 6319)
+      - REDIS_PASSWORD=          # Để trống vì Redis chưa cấu hình requirepass
+    command:
+      - '--web.listen-address=:9121'  # Port để expose metrics cho Prometheus scrape
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis  # Đảm bảo Redis start trước redis-exporter
+    networks:
+      - pre-event-network

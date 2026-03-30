@@ -35,3 +35,10 @@ scrape_configs:
       # Dùng tên container vì mysqld-exporter chạy trong cùng Docker network với Prometheus
       - targets: ['pre-event-mysqld-exporter:9104']
     metrics_path: '/metrics'
+
+  - job_name: 'banvetau-redis-exporter'
+    scrape_interval: 5s
+    static_configs:
+      # Dùng tên container vì redis-exporter chạy trong cùng Docker network với Prometheus
+      - targets: ['pre-event-redis-exporter:9121']
+    metrics_path: '/metrics'
