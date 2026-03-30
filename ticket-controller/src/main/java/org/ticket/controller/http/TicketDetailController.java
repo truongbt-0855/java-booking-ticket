@@ -19,6 +19,7 @@ public class TicketDetailController {
     // CALL Service Application
     private final TicketDetailAppService ticketDetailAppService;
 
+    // ===== CÁCH CŨ: CacheService tự handle lock + cache (vi phạm SRP) =====
     @GetMapping("/{ticketId}/detail/{detailId}")
     public ResultMessage<TicketDetail> getTicketDetail(
             @PathVariable("ticketId") Long ticketId,
@@ -27,5 +28,16 @@ public class TicketDetailController {
         log.info("MEMBER TIPS GO");
         log.info(" ticketId:{}, detailId:{}", ticketId, detailId);
         return ResultUtil.data(ticketDetailAppService.getTicketDetailById(detailId));
+    }
+
+    // ===== CÁCH MỚI: dùng CacheStampedeGuard — SRP, reusable =====
+    @GetMapping("/{ticketId}/detail_refactor/{detailId}")
+    public ResultMessage<TicketDetail> getTicketDetailRefactor(
+            @PathVariable("ticketId") Long ticketId,
+            @PathVariable("detailId") Long detailId
+    ) {
+        log.info("REFACTOR VERSION");
+        log.info(" ticketId:{}, detailId:{}", ticketId, detailId);
+        return ResultUtil.data(ticketDetailAppService.getTicketDetailByIdV2(detailId));
     }
 }
