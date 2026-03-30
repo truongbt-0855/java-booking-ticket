@@ -1,5 +1,7 @@
 # Cache & Distributed Lock
 
+Ref: https://www.anhdh.net/blog/redis-distributed-locking
+
 ## 1. Vấn đề
 
 ### Race Condition khi nhiều server chạy song song

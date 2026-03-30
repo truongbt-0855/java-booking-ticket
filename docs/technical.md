@@ -15,6 +15,47 @@ Các kỹ thuật xử lý high concurrency được áp dụng trong project:
 
 ---
 
+## Redis Serialization
+
+### Tại sao cần `RedisConfig`?
+
+Spring Boot mặc định dùng **JDK serialization** cho `RedisTemplate`. Khi không có `RedisConfig` tùy chỉnh, mọi object lưu vào Redis phải `implements Serializable`, không thì lỗi:
+
+```
+ERROR: setObject error: Cannot serialize
+```
+
+### JDK vs JSON Serialization
+
+| | JDK Serialization | Jackson JSON |
+|---|---|---|
+| Output | Binary bytes (không đọc được) | JSON text (đọc được) |
+| Yêu cầu | Class phải `implements Serializable` | Chỉ cần getter/field |
+| Debug trên Redis CLI | Không thể | Dễ dàng |
+
+### Cách hoạt động
+
+**JDK serialization** đọc vào bộ nhớ nội bộ của object — Java yêu cầu class phải đánh dấu `implements Serializable` để "đồng ý" cho phép điều này.
+
+**Jackson** chỉ đọc các public getter/field rồi ghi ra text JSON — không đụng bộ nhớ nội bộ, không cần `Serializable`.
+
+### `RedisConfig` thay thế serializer mặc định
+
+```java
+// Thay JDK serialization bằng JSON (Jackson 3.x — Spring Boot 4.x)
+GenericJacksonJsonRedisSerializer serializer = new GenericJacksonJsonRedisSerializer(new ObjectMapper());
+redisTemplate.setValueSerializer(serializer);
+redisTemplate.setKeySerializer(new StringRedisSerializer()); // key lưu dạng plain String
+```
+
+Kết quả trong Redis sau khi có `RedisConfig`:
+```
+key:   PRO_TICKET:ITEM:1              ← plain String, đọc được
+value: {"id":1,"name":"Concert A"}   ← JSON, đọc được
+```
+
+---
+
 ## Annotations
 
 ### @Value
