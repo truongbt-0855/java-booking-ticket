@@ -1,52 +1,51 @@
 networks:
   pre-event-network:
-    driver: bridge
+    driver: bridge  # Tất cả container trong cùng network này có thể giao tiếp với nhau qua tên container
 
 services:
   mysql:
     image: mysql:8.0
     container_name: pre-event-mysql
     volumes:
-      - ./data/db_data:/var/lib/mysql
-      - ./mysql/init:/docker-entrypoint-initdb.d/ # nếu bạn không phải devops vui lòng contact anonystick. tks
+      - ./data/db_data:/var/lib/mysql                        # Persist data ra ngoài container, tránh mất data khi container bị xóa
+      - ./mysql/init:/docker-entrypoint-initdb.d/            # Script SQL trong folder này sẽ tự chạy khi MySQL khởi tạo lần đầu
     command: [
       '--character-set-server=utf8mb4',
       '--collation-server=utf8mb4_unicode_ci',
-      '--skip-character-set-client-handshake'  # Buộc tất cả kết nối sử dụng utf8mb4
+      '--skip-character-set-client-handshake'  # Buộc tất cả kết nối sử dụng utf8mb4, bỏ qua charset client khai báo
     ]
     environment:
       MYSQL_ROOT_PASSWORD: root1234
       MYSQL_DATABASE: ticket
       MYSQL_PASSWORD: root1234
     ports:
-      - "3316:3306"
+      - "3316:3306"  # host:container — truy cập từ ngoài qua port 3316, tránh xung đột nếu máy đã có MySQL local
     networks:
       - pre-event-network
 
-  #Redis
   redis:
     container_name: pre-event-redis
-    image: redislabs/redismod:latest
+    image: redislabs/redismod:latest  # Image có sẵn các Redis module (RedisJSON, RediSearch...), nặng hơn redis:alpine
     ports:
-      - "6319:6379"
+      - "6319:6379"  # host:container — truy cập từ ngoài qua port 6319
     networks:
       - pre-event-network
 
   prometheus:
     container_name: pre-event-prometheus
     image: prom/prometheus:latest
-    restart: unless-stopped
+    restart: unless-stopped  # Tự restart khi crash, trừ khi bị stop thủ công
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./data/prometheus_data:/prometheus
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml  # Mount file config vào container
+      - ./data/prometheus_data:/prometheus                          # Persist time-series data
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle'
+      - '--web.enable-lifecycle'  # Cho phép hot reload config qua POST http://localhost:9090/-/reload (không cần restart container)
     extra_hosts:
-      - host.docker.internal:host-gateway  # Docker Desktop tự resolve host.docker.internal → Windows host
+      - host.docker.internal:host-gateway  # Docker Desktop tự resolve host.docker.internal → Windows host, dùng để scrape Spring Boot chạy trên Windows
     ports:
       - "9090:9090"
     networks:
@@ -59,13 +58,13 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin1234
-      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_ALLOW_SIGN_UP=false       # Tắt tự đăng ký, chỉ admin mới tạo được user
       - GF_SERVER_DOMAIN=localhost
-      - GF_LOG_MODE=console file
-      - GF_LOG_FILTER=alerting.notifier.slack:debug alermanagere:debug ngalert:debug
+      - GF_LOG_MODE=console file           # Ghi log ra cả console lẫn file
+      - GF_LOG_FILTER=alerting.notifier.slack:debug alermanagere:debug ngalert:debug  # Tăng log level cho alerting để debug
     restart: unless-stopped
     volumes:
-      - ./data/grafana_data:/var/lib/grafana
+      - ./data/grafana_data:/var/lib/grafana  # Persist dashboards, datasources, users
     ports:
       - "3000:3000"
     networks:
@@ -76,15 +75,46 @@ services:
     image: prom/node-exporter:latest
     restart: unless-stopped
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      # Mount filesystem của host vào container ở chế độ read-only (ro) để node-exporter đọc metrics
+      # Trên Docker Desktop/Windows: đây là filesystem của WSL2 VM, không phải Windows host
+      - /proc:/host/proc:ro    # Thông tin process của Linux kernel
+      - /sys:/host/sys:ro      # Thông tin hardware/kernel
+      - /:/rootfs:ro           # Root filesystem để đọc disk usage
     command:
-      - --path.procfs=/host/proc
+      - --path.procfs=/host/proc   # Chỉ node-exporter đọc /proc từ đường dẫn mount ở trên
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
-      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)  # Bỏ qua các mount point hệ thống, chỉ đo disk thật
     ports:
       - "9100:9100"
+    networks:
+      - pre-event-network
+
+  mysqld-exporter:
+    container_name: pre-event-mysqld-exporter
+    image: prom/mysqld-exporter:latest
+    restart: unless-stopped
+    command:
+      # Các collector được bật thêm ngoài mặc định — mỗi cái expose thêm một nhóm metrics MySQL
+      - '--collect.engine_innodb_status'              # InnoDB engine status (lock, buffer pool...)
+      - '--collect.info_schema.processlist'           # Danh sách query đang chạy
+      - '--collect.info_schema.tables'                # Kích thước từng table
+      - '--collect.info_schema.tables.databases=ticket'  # Chỉ collect table stats của DB "ticket", bỏ qua information_schema, mysql, sys, performance_schema
+      - '--collect.info_schema.query_response_time'   # Phân bố thời gian response của query
+      - '--collect.perf_schema.file_events'           # I/O events từ performance_schema
+      - '--collect.perf_schema.eventsstatements'      # Thống kê các câu SQL
+      - '--collect.perf_schema.indexiowaits'          # Thời gian chờ I/O theo index
+      - '--collect.global_status'                     # Global status variables của MySQL
+      - '--config.my-cnf=/etc/mysql/.my.cnf'          # File chứa thông tin kết nối MySQL
+    volumes:
+      - ./mysqld-exporter/.my.cnf:/etc/mysql/.my.cnf  # File config credentials kết nối MySQL (cần tạo thủ công)
+    environment:
+      # Port phải là 3306 (port nội bộ container MySQL), không phải 3316 (port host)
+      # Vì mysqld-exporter và mysql cùng network, giao tiếp qua tên container
+      - DATA_SOURCE_NAME=root:root1234@tcp(mysql:3306)/
+    ports:
+      - "9104:9104"
+    depends_on:
+      - mysql  # Đảm bảo MySQL start trước mysqld-exporter
     networks:
       - pre-event-network

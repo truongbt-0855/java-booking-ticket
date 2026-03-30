@@ -23,7 +23,15 @@ scrape_configs:
     metrics_path: '/actuator/prometheus'  # Endpoint do Spring Boot Actuator + Micrometer expose
 
 
-  - job_name: 'banvetau-exporter'
+  - job_name: 'banvetau-node-exporter'
     scrape_interval: 5s
     static_configs:
-      - targets: ['host.docker.internal:9100']
+      # Dùng tên container vì node-exporter chạy trong cùng Docker network với Prometheus
+      - targets: ['pre-event-node-exporter:9100']
+
+  - job_name: 'banvetau-mysqld-exporter'
+    scrape_interval: 5s
+    static_configs:
+      # Dùng tên container vì mysqld-exporter chạy trong cùng Docker network với Prometheus
+      - targets: ['pre-event-mysqld-exporter:9104']
+    metrics_path: '/metrics'
