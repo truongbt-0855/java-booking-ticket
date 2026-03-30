@@ -111,6 +111,9 @@ management:
           - health
           - info
           - metrics
+          - prometheus  # Bắt buộc phải expose thì Prometheus mới scrape được /actuator/prometheus
   endpoint:
     health:
       show-details: always  # Hiển thị chi tiết health check — nên đặt "when-authorized" ở production
+    prometheus:
+      enabled: true  # Kích hoạt endpoint /actuator/prometheus để Prometheus có thể scrape metrics

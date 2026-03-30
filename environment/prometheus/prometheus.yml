@@ -1,0 +1,29 @@
+# ============================================================
+# Cấu hình toàn cục cho Prometheus
+# ============================================================
+global:
+  scrape_interval: 15s  # Mặc định cứ 15s scrape một lần, có thể override ở từng job
+
+scrape_configs:
+  # --- Job: Prometheus tự scrape chính nó ---
+  - job_name: 'banvetau-prometheus'
+    scrape_interval: 5s   # Override: scrape nhanh hơn (5s) để monitor bản thân Prometheus
+    static_configs:
+      - targets: ['localhost:9090']  # localhost ở đây hợp lệ vì Prometheus tự scrape chính nó trong container
+    metrics_path: '/metrics'
+
+  # --- Job: Scrape metrics từ Spring Boot app chạy trên host machine ---
+  - job_name: 'banvetau-springboot'
+    scrape_interval: 5s   # Override: scrape nhanh hơn (5s) để monitor app realtime
+    static_configs:
+      # host.docker.internal trỏ tới host machine từ bên trong Docker container
+      # Cần khai báo extra_hosts trong docker-compose (đã có: host.docker.internal:host-gateway)
+      # Port 8080 = port Spring Boot app đang chạy (server.port trong application.yml)
+      - targets: ['host.docker.internal:8080']
+    metrics_path: '/actuator/prometheus'  # Endpoint do Spring Boot Actuator + Micrometer expose
+
+
+  - job_name: 'banvetau-exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:9100']

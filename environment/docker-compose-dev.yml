@@ -1,5 +1,3 @@
-version: '3.2'
-
 networks:
   pre-event-network:
     driver: bridge
@@ -31,5 +29,62 @@ services:
     image: redislabs/redismod:latest
     ports:
       - "6319:6379"
+    networks:
+      - pre-event-network
+
+  prometheus:
+    container_name: pre-event-prometheus
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./data/prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    extra_hosts:
+      - host.docker.internal:host-gateway  # Docker Desktop tự resolve host.docker.internal → Windows host
+    ports:
+      - "9090:9090"
+    networks:
+      - pre-event-network
+
+  grafana:
+    container_name: pre-event-grafana
+    image: grafana/grafana:latest
+    hostname: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin1234
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=localhost
+      - GF_LOG_MODE=console file
+      - GF_LOG_FILTER=alerting.notifier.slack:debug alermanagere:debug ngalert:debug
+    restart: unless-stopped
+    volumes:
+      - ./data/grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - pre-event-network
+
+  node-exporter:
+    container_name: pre-event-node-exporter
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)
+    ports:
+      - "9100:9100"
     networks:
       - pre-event-network

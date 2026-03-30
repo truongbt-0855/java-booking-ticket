@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS `ticket`.`ticket_item` (
 
 -- INSERT MOCK DATA
 -- Insert data into `ticket` table
-INSERT INTO `ticket`.`ticket` (`name`, `desc`, `start_time`, `end_time`, `status`, `updated_at`, `created_at`)
+INSERT INTO `ticket`.`ticket` (`name`, `description`, `start_time`, `end_time`, `status`, `updated_at`, `created_at`)
 VALUES
     ('Đợt Mở Bán Vé Ngày 12/12', 'Sự kiện mở bán vé đặc biệt cho ngày 12/12', '2024-12-12 00:00:00', '2024-12-12 23:59:59', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
     ('Đợt Mở Bán Vé Ngày 01/01', 'Sự kiện mở bán vé cho ngày đầu năm mới 01/01', '2025-01-01 00:00:00', '2025-01-01 23:59:59', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
