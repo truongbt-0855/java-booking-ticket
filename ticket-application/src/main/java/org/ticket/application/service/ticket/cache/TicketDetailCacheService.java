@@ -106,7 +106,7 @@ public class TicketDetailCacheService {
 
             // Bước 4: Vẫn miss → query DB, chỉ 1 request duy nhất vào đây tại 1 thời điểm
             ticketDetail = ticketDetailDomainService.getTicketDetailById(id);
-//            log.info("FROM DBS id={}, result={}", id, ticketDetail);
+            log.info("FROM DBS id={}, result={}", id, ticketDetail);
 
             // Bước 5: Set cache kể cả khi null (null-value caching) — tránh Cache Penetration:
             // nếu không set null, mọi request với id không tồn tại sẽ bypass cache và hit DB mãi mãi

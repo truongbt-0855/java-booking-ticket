@@ -1,0 +1,10 @@
+---
+
+# Kibana lắng nghe trên tất cả interface — cần thiết để truy cập từ ngoài container qua localhost:5601
+server.host: 0.0.0.0
+
+# Trỏ Kibana đến Elasticsearch — dùng tên container vì cùng Docker network
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+# Tắt UI monitoring container trong Kibana (không hiện tab Monitoring trên menu)
+monitoring.ui.container.elasticsearch.enabled: false

@@ -134,3 +134,57 @@ services:
       - redis  # Đảm bảo Redis start trước redis-exporter
     networks:
       - pre-event-network
+
+  # ======================== ELK Stack ========================
+  # Flow tổng quát:
+  #   Spring Boot  →(JSON logs via TCP:5044)→  Logstash  →(parsed logs)→  Elasticsearch  ←  Kibana
+  #
+  #   1. Spring Boot dùng logstash-logback-encoder gửi log dạng JSON qua TCP đến Logstash
+  #   2. Logstash nhận, parse, rồi đẩy vào Elasticsearch theo index theo ngày (pre-ticket-YYYY.MM.dd)
+  #   3. Kibana kết nối vào Elasticsearch để visualize, search, tạo dashboard từ log đó
+
+  elasticsearch:
+    container_name: pre-event-elasticsearch
+    image: elasticsearch:9.3.2
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node  # Chạy 1 node duy nhất, không cần bầu chọn master như cluster
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m  # Giới hạn JVM heap — tránh ES chiếm toàn bộ RAM máy dev
+    volumes:
+      - ./elk/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml  # Override config mặc định
+      - ./data/elasticsearch_data:/usr/share/elasticsearch/data  # Persist index data, tránh mất log khi restart
+    ports:
+      - "9200:9200"  # REST API — Kibana và client dùng port này để query
+      - "9300:9300"  # Transport port — giao tiếp nội bộ giữa các node (chỉ cần thiết khi scale thành cluster)
+    networks:
+      - pre-event-network
+
+  logstash:
+    container_name: pre-event-logstash
+    image: logstash:9.3.2
+    restart: unless-stopped
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m  # Giới hạn JVM heap Logstash
+    volumes:
+      - ./elk/pipeline:/usr/share/logstash/pipeline  # Thư mục chứa *.conf — Logstash tự load tất cả file trong này
+      - ./elk/logstash.yml:/usr/share/logstash/config/logstash.yml  # Config chung của Logstash (monitoring, http.host...)
+    ports:
+      - "5044:5044"  # TCP input — Spring Boot gửi log JSON đến đây (xem pipeline/logstash.conf)
+      - "9600:9600"  # Logstash monitoring API — kiểm tra health, pipeline stats
+    depends_on:
+      - elasticsearch  # Đảm bảo ES sẵn sàng trước khi Logstash khởi động và kết nối output
+    networks:
+      - pre-event-network
+
+  kibana:
+    container_name: pre-event-kibana
+    image: kibana:9.3.2
+    restart: unless-stopped
+    volumes:
+      - ./elk/kibana.yml:/usr/share/kibana/config/kibana.yml  # Override config: trỏ ES host, tắt monitoring UI
+    ports:
+      - "5601:5601"  # Kibana UI — truy cập http://localhost:5601
+    depends_on:
+      - elasticsearch  # Kibana cần ES đã chạy để đăng ký index patterns khi khởi động
+    networks:
+      - pre-event-network

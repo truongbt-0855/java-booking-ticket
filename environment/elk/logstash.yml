@@ -1,0 +1,14 @@
+---
+
+# Logstash HTTP API lắng nghe trên tất cả interface
+# Cho phép gọi http://localhost:9600 từ ngoài container để kiểm tra health/pipeline stats
+api.http.host: "0.0.0.0"  # Logstash 9.x đổi tên từ http.host → api.http.host
+
+# --- Monitoring (tắt cho dev) ---
+# Monitoring sẽ gửi metrics của Logstash vào ES để xem trong Kibana Stack Monitoring
+# Tắt vì dev không cần, và ES cũng đã tắt xpack.monitoring.collection
+xpack.monitoring.enabled: false
+xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch:9200"]
+# username/password chỉ dùng khi xpack.security.enabled: true trong ES
+# xpack.monitoring.elasticsearch.username: elastic
+# xpack.monitoring.elasticsearch.password: elastic

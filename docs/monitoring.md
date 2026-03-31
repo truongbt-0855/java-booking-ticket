@@ -139,3 +139,164 @@ curl -X POST http://localhost:9090/-/reload
 
 # Hoặc restart container qua Docker Desktop
 ```
+
+---
+
+# Logging: ELK Stack
+
+Prometheus + Grafana giải quyết bài toán **metrics** (số liệu định lượng: CPU, request count, latency...).
+ELK giải quyết bài toán **logs** (nội dung chi tiết: lỗi xảy ra ở đâu, request nào gây ra, stacktrace là gì...).
+
+## Vai trò từng thành phần
+
+| Thành phần | Vai trò |
+|-----------|---------|
+| **Logstash** | Nhận log thô từ Spring Boot qua TCP, parse và transform, rồi đẩy vào Elasticsearch. Đóng vai trò pipeline xử lý trung gian. |
+| **Elasticsearch** | Lưu trữ và đánh index toàn bộ log. Cung cấp API search cực nhanh — full-text search, filter theo field, aggregation. |
+| **Kibana** | UI để query, visualize, tạo dashboard từ log trong Elasticsearch. |
+
+---
+
+## Luồng tương tác
+
+```
+Spring Boot App
+(logstash-logback-encoder)
+        │
+        │ JSON log qua TCP :5044
+        ▼
+    Logstash
+  (parse + transform)
+        │
+        │ đẩy vào index pre-ticket-YYYY.MM.dd
+        ▼
+  Elasticsearch :9200
+  (lưu trữ & đánh index)
+        │
+        │ query
+        ▼
+     Kibana :5601
+  (search, dashboard)
+        ▲
+     Browser
+```
+
+**Tại sao không gửi thẳng từ Spring Boot vào Elasticsearch?**
+Dùng Logstash làm tầng trung gian để có thể:
+- Transform log (đổi tên field, parse timestamp, enrich data) mà không cần sửa code app
+- Buffer log khi ES tạm thời down — Logstash giữ lại, không mất log
+- Sau này dễ thêm source khác (Nginx, MySQL slow query log...) vào cùng pipeline
+
+---
+
+## Cấu hình trong project
+
+| Thành phần | URL | Ghi chú |
+|-----------|-----|---------|
+| Elasticsearch | http://localhost:9200 | REST API — trả về cluster info nếu hoạt động |
+| Kibana | http://localhost:5601 | UI xem log |
+| Logstash TCP input | localhost:5044 | Spring Boot gửi log vào đây |
+| Logstash monitoring API | http://localhost:9600 | Kiểm tra health/pipeline stats của Logstash |
+
+Config files:
+- Pipeline: [`environment/elk/pipeline/logstash.conf`](../environment/elk/pipeline/logstash.conf)
+- Logstash: [`environment/elk/logstash.yml`](../environment/elk/logstash.yml)
+- Elasticsearch: [`environment/elk/elasticsearch.yml`](../environment/elk/elasticsearch.yml)
+- Kibana: [`environment/elk/kibana.yml`](../environment/elk/kibana.yml)
+
+---
+
+## Tích hợp với Spring Boot
+
+### 1. Dependency (`ticket-start/pom.xml`)
+
+```xml
+<dependency>
+    <groupId>net.logstash.logback</groupId>
+    <artifactId>logstash-logback-encoder</artifactId>
+    <version>8.0</version>
+</dependency>
+```
+
+### 2. Logback config (`logback-spring.xml`)
+
+```xml
+<appender name="LOG_STASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+    <destination>localhost:5044</destination>
+    <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+        ...
+    </encoder>
+</appender>
+```
+
+`LogstashTcpSocketAppender` mở một TCP connection bền vững đến Logstash. Mỗi log event được serialize thành JSON (1 dòng = 1 JSON object) và gửi qua connection đó. Nếu Logstash tạm thời down, appender tự reconnect và buffer log lại trong thời gian chờ.
+
+### 3. Format log gửi đi
+
+Mỗi log event gửi sang Logstash là 1 JSON object gồm các field:
+
+| Field | Ý nghĩa |
+|-------|---------|
+| `mv_date` | Timestamp của log |
+| `mv_level` | Log level: INFO, WARN, ERROR... |
+| `mv_thread` | Thread xử lý request |
+| `mv_traceId` | Trace ID để correlate log theo từng request |
+| `mv_logger` | Class phát ra log |
+| `mv_message` | Nội dung log |
+
+---
+
+## Xem log trên Kibana
+
+### Lần đầu — Tạo Data View
+
+1. Vào **Stack Management** (icon bánh răng) → **Kibana** → **Data Views** → **Create data view**
+2. Index pattern: `pre-ticket-*` (match tất cả index theo ngày)
+3. Timestamp field: `@timestamp`
+4. Save → vào **Discover** để bắt đầu search
+
+### Tìm log theo traceId
+
+Trong **Discover**, filter:
+```
+mv_traceId : "abc-123-xyz"
+```
+→ Xem toàn bộ log của 1 request từ đầu đến cuối, kể cả qua nhiều service.
+
+### Tìm tất cả ERROR
+
+```
+mv_level : "ERROR"
+```
+
+---
+
+## Workflow thực tế
+
+```
+User báo lỗi / Alert từ Prometheus (error rate tăng)
+        ↓
+Lấy traceId từ response header hoặc Prometheus alert
+        ↓
+Vào Kibana → Discover → filter theo traceId
+        ↓
+Xem toàn bộ log của request đó: vào lúc nào, lỗi ở layer nào, stacktrace gì
+        ↓
+Root cause → fix
+```
+
+Prometheus cho biết **có vấn đề** (error rate tăng, latency cao).
+Kibana cho biết **vấn đề đó là gì** (stacktrace, context, input data).
+
+---
+
+## Index theo ngày
+
+Log được lưu vào index `pre-ticket-YYYY.MM.dd` (ví dụ: `pre-ticket-2026.03.31`).
+
+Lợi ích: dễ xóa log cũ mà không ảnh hưởng log mới — chỉ cần xóa index của ngày đó:
+```bash
+curl -X DELETE http://localhost:9200/pre-ticket-2026.03.31
+```
+
+Hoặc cấu hình ILM (Index Lifecycle Management) trong Elasticsearch để tự động xóa sau N ngày.

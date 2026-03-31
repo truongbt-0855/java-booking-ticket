@@ -1,0 +1,22 @@
+---
+
+# Lắng nghe trên tất cả interface — cần thiết để Kibana/Logstash (container khác) kết nối được vào
+network.host: 0.0.0.0
+
+# Tắt xác thực — môi trường dev không cần username/password khi truy cập ES
+xpack.security.enabled: false
+xpack.security.http.ssl.enabled: false      # ES 9.x tách SSL ra riêng — phải tắt tường minh, không thì vẫn serve HTTPS dù security đã off
+
+# Dùng license trial để mở các tính năng X-Pack (alerting, monitoring...) trong thời gian dev
+xpack.license.self_generated.type: trial
+
+# Tắt thu thập metrics nội bộ của ES gửi về cluster monitoring — không cần thiết cho dev
+xpack.monitoring.collection.enabled: false
+
+# --- Disk watermark ---
+# ES mặc định từ chối ghi index khi disk gần đầy. Với máy dev ổ cứng nhỏ, hạ ngưỡng xuống MB thay vì %
+# Thứ tự (free disk): flood_stage < high < low
+cluster.routing.allocation.disk.threshold_enabled: false  # Tắt hẳn disk threshold check cho dev
+cluster.routing.allocation.disk.watermark.low: 500mb      # Cảnh báo khi free disk < 500mb, bắt đầu relocate shards
+cluster.routing.allocation.disk.watermark.high: 300mb     # Ngừng cấp phát shard mới khi free disk < 300mb
+cluster.routing.allocation.disk.watermark.flood_stage: 200mb  # Index chuyển read-only khi free disk < 200mb
