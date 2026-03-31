@@ -24,13 +24,13 @@ public class TicketDetailAppServiceImpl implements TicketDetailAppService {
 
     @Override
     public TicketDetail getTicketDetailById(Long ticketId) {
-        log.info("Implement Application (cũ): {}", ticketId);
+//        log.info("Implement Application (cũ): {}", ticketId);
 //        return ticketDetailDomainService.getTicketDetailById(ticketId);
 //        return ticketDetailCacheService.getTicketDefaultCacheNormal(ticketId, System.currentTimeMillis());
 
-//        return ticketDetailCacheService.getTicketDefaultCacheVip(ticketId, System.currentTimeMillis());
+        return ticketDetailCacheService.getTicketDefaultCacheVip(ticketId, System.currentTimeMillis());
 
-        return ticketDetailCacheService.getTicketDefaultCacheLocal(ticketId, System.currentTimeMillis());
+//        return ticketDetailCacheService.getTicketDefaultCacheLocal(ticketId, System.currentTimeMillis());
     }
 
     @Override

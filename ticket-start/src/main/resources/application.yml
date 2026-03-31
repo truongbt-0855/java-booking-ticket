@@ -3,6 +3,12 @@
 # ============================================================
 server:
   port: 8080  # Cổng HTTP mà ứng dụng Spring Boot lắng nghe
+  tomcat:
+    threads:
+      max: 200 #
+      min-spare: 50
+    #    max-connections: 8000
+    accept-count: 20000
 
 spring:
   config:

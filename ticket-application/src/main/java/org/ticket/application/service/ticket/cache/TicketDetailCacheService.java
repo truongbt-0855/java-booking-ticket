@@ -51,12 +51,12 @@ public class TicketDetailCacheService {
     public TicketDetail getTicketDefaultCacheNormal(Long id, Long version) {
         TicketDetail ticketDetail = redisInfraService.getObject(genEventItemKey(id), TicketDetail.class);
         if (ticketDetail != null) {
-            log.info("FROM CACHE {}, {}, {}", id, version, ticketDetail);
+//            log.info("FROM CACHE {}, {}, {}", id, version, ticketDetail);
             return ticketDetail;
         }
 
         ticketDetail = ticketDetailDomainService.getTicketDetailById(id);
-        log.info("FROM DBS {}, {}, {}", id, version, ticketDetail);
+//        log.info("FROM DBS {}, {}, {}", id, version, ticketDetail);
 
         if (ticketDetail != null) {
             redisInfraService.setObject(genEventItemKey(id), ticketDetail);
@@ -79,12 +79,12 @@ public class TicketDetailCacheService {
      *       Cần implement retry logic tại TicketDetailAppServiceImpl.
      */
     public TicketDetail getTicketDefaultCacheVip(Long id, Long version) {
-        log.info("getTicketDefaultCacheVip id={}, version={}", id, version);
+//        log.info("getTicketDefaultCacheVip id={}, version={}", id, version);
 
         // Bước 1: Check cache — không cần lock nếu đã có dữ liệu
         TicketDetail ticketDetail = redisInfraService.getObject(genEventItemKey(id), TicketDetail.class);
         if (ticketDetail != null) {
-            log.info("FROM DISTRIBUTED CACHE EXIST{}", ticketDetail);
+//            log.info("FROM DISTRIBUTED CACHE EXIST{}", ticketDetail);
             return ticketDetail;
         }
 
@@ -106,7 +106,7 @@ public class TicketDetailCacheService {
 
             // Bước 4: Vẫn miss → query DB, chỉ 1 request duy nhất vào đây tại 1 thời điểm
             ticketDetail = ticketDetailDomainService.getTicketDetailById(id);
-            log.info("FROM DBS id={}, result={}", id, ticketDetail);
+//            log.info("FROM DBS id={}, result={}", id, ticketDetail);
 
             // Bước 5: Set cache kể cả khi null (null-value caching) — tránh Cache Penetration:
             // nếu không set null, mọi request với id không tồn tại sẽ bypass cache và hit DB mãi mãi
@@ -148,7 +148,7 @@ public class TicketDetailCacheService {
             return ticketDetail;
         }
 
-        log.info("local+redis miss, acquiring lock id={}", id);
+//        log.info("local+redis miss, acquiring lock id={}", id);
 
         // 3. Cache miss → tranh lock theo từng ticketId
         RedisDistributedLocker locker = redisDistributedService.getDistributedLock("PRO_LOCK_KEY_ITEM" + id);
@@ -169,7 +169,7 @@ public class TicketDetailCacheService {
 
             // 5. Vẫn miss → query DB, chỉ 1 request duy nhất vào đây tại 1 thời điểm
             ticketDetail = ticketDetailDomainService.getTicketDetailById(id);
-            log.info("FROM DB id={}, found={}", id, ticketDetail != null);
+//            log.info("FROM DB id={}, found={}", id, ticketDetail != null);
 
             // Set Redis kể cả khi null (null-value caching) — tránh Cache Penetration
             redisInfraService.setObject(genEventItemKey(id), ticketDetail);
