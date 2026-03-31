@@ -63,6 +63,10 @@ spring:
           min-idle: 0     # Số kết nối idle tối thiểu luôn được giữ
           max-wait: 3000ms  # Chờ tối đa 3 giây để lấy kết nối từ pool, nếu quá thời gian sẽ ném exception thay vì treo thread mãi
 
+  threads:
+    virtual:
+      enabled: true
+
 # ============================================================
 # Cấu hình Resilience4j — Rate Limiter & Circuit Breaker
 # ============================================================
