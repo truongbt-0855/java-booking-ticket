@@ -1,0 +1,76 @@
+@startuml
+actor UserX
+actor UserY
+actor Admin
+
+entity "Server A (Guava Cache)" as A
+entity "Server B (Guava Cache)" as B
+entity "Distributed Cache" as DC
+
+== Bước 1: UserX lần đầu truy vấn — local cache trống, xuống DC ==
+UserX -> A : version=null
+A -> DC : itemId=1, version=null
+DC -> A : version=12:00, stock=10
+A -> A : lưu local cache (version=12:00, stock=10)
+A -> UserX : version=12:00, stock=10
+UserX -> UserX : lưu version=12:00 vào cookie
+
+== Bước 2: UserX truy vấn lần 2 — local cache hit, không xuống DC ==
+UserX -> A : version=12:00
+A -> A : local cache có version=12:00\n12:00 == 12:00 → trả luôn
+A -> UserX : version=12:00, stock=10 (từ local cache)
+
+== Bước 3: Admin update — chỉ DC biết, các Server KHÔNG biết ==
+Admin -> DC : update stock=8 → version=12:05
+note over A : ⚠️ A vẫn đang cache version=12:00, stock=10\nKhông có ai notify A
+note over B : ⚠️ B chưa có cache, cũng không biết gì
+
+== Bước 4: UserY lần đầu hit Server B — nhận được data mới từ DC ==
+UserY -> B : version=null
+B -> DC : itemId=1, version=null
+DC -> B : version=12:05, stock=8
+B -> B : lưu local cache (version=12:05, stock=8)
+B -> UserY : version=12:05, stock=8
+UserY -> UserY : lưu version=12:05 vào cookie
+
+== Bước 5: UserY bị redirect sang Server A — "gossip" version mới ==
+UserY -> A : version=12:05
+A -> A : local cache có version=12:00\n12:05 > 12:00 → cache cũ hơn client → xuống DC
+A -> DC : itemId=1
+DC -> A : version=12:10, stock=8
+A -> A : cập nhật local cache (version=12:10, stock=8)
+A -> UserY : version=12:10, stock=8
+UserY -> UserY : lưu version=12:10 vào cookie
+note over A : ✅ A được cập nhật nhờ UserY\n"vô tình" mang version mới sang
+
+== Bước 6: UserX truy vấn lần 3 — tự nhận data mới dù chưa biết có update ==
+UserX -> A : version=12:00
+A -> A : local cache có version=12:10\n12:00 < 12:10 → trả local cache
+A -> UserX : version=12:10, stock=8
+UserX -> UserX : lưu version=12:10 vào cookie
+
+== ⚠️ Trade-off: Nếu không có client nào "gossip" sang Server A ==
+note over A, DC
+  Nếu UserY không bao giờ hit Server A:
+  12:01 → UserX hỏi A → nhận stock=10 ❌ (sai)
+  12:02 → UserX hỏi A → nhận stock=10 ❌ (sai)
+  ...cho đến khi TTL hết mới tự refresh ✅
+
+  Đây là Eventual Consistency — nhất quán dần dần,
+  phụ thuộc vào traffic, KHÔNG đảm bảo tức thì.
+end note
+
+== ✅ Khi nào dùng Version (Eventual Consistency) ==
+note over A, DC
+  PHÙ HỢP:
+  - Data ít critical: tên sự kiện, mô tả vé, ảnh
+  - Chấp nhận user thấy data cũ vài phút
+  - Muốn đơn giản, không cần infra thêm
+
+  KHÔNG PHÙ HỢP:
+  - Tồn kho, giá, trạng thái thanh toán
+  - Sai 1 giây có thể gây oversell hoặc mất tiền
+  → Dùng Redis Pub/Sub để invalidate tức thì
+end note
+
+@enduml

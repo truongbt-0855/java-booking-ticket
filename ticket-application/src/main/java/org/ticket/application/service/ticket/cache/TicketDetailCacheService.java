@@ -84,7 +84,7 @@ public class TicketDetailCacheService {
         // Bước 1: Check cache — không cần lock nếu đã có dữ liệu
         TicketDetail ticketDetail = redisInfraService.getObject(genEventItemKey(id), TicketDetail.class);
         if (ticketDetail != null) {
-//            log.info("FROM DISTRIBUTED CACHE EXIST{}", ticketDetail);
+            log.info("FROM DISTRIBUTED CACHE EXIST{}", ticketDetail);
             return ticketDetail;
         }
 
@@ -138,12 +138,14 @@ public class TicketDetailCacheService {
         // 1. Local cache hit → trả về ngay, không xuống Redis
         TicketDetail ticketDetail = getTicketDetailLocalCache(id);
         if (ticketDetail != null) {
+            log.info("FROM LOCAL CACHE EXIST>>>");
             return ticketDetail;
         }
 
         // 2. Redis hit → backfill local cache, trả về
         ticketDetail = redisInfraService.getObject(genEventItemKey(id), TicketDetail.class);
         if (ticketDetail != null) {
+            log.info("FROM DISTRIBUTED CACHE EXIST {}", ticketDetail);
             ticketDetailLocalCache.put(id, ticketDetail);
             return ticketDetail;
         }

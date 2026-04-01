@@ -3,6 +3,19 @@ networks:
     driver: bridge  # Tất cả container trong cùng network này có thể giao tiếp với nhau qua tên container
 
 services:
+  nginx:
+    container_name: pre-event-nginx
+    image: nginx:latest
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro  # Mount config vào container
+    extra_hosts:
+      - host.docker.internal:host-gateway  # Resolve host.docker.internal → Windows host (giống prometheus)
+    ports:
+      - "80:80"  # Truy cập qua http://localhost
+    networks:
+      - pre-event-network
+
   mysql:
     image: mysql:8.0
     container_name: pre-event-mysql

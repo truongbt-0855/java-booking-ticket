@@ -2,10 +2,8 @@ package org.ticket.controller.http;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.ticket.application.model.TicketDetailDTO;
 import org.ticket.application.service.ticket.TicketDetailAppService;
 import org.ticket.controller.model.enums.ResultUtil;
 import org.ticket.controller.model.vo.ResultMessage;
@@ -21,11 +19,21 @@ public class TicketDetailController {
 
     // ===== CÁCH CŨ: CacheService tự handle lock + cache (vi phạm SRP) =====
     @GetMapping("/{ticketId}/detail/{detailId}")
-    public ResultMessage<TicketDetail> getTicketDetail(
+    public ResultMessage<TicketDetailDTO> getTicketDetail(
+            @PathVariable Long ticketId,
+            @PathVariable Long detailId,
+            @RequestParam(name = "version", required = false) Long version
+    ) {
+        return ResultUtil.data(ticketDetailAppService.getTicketDetailById(detailId, version));
+    }
+
+    // order - remove local cache
+    @GetMapping("/{ticketId}/detail/{detailId}/order")
+    public boolean orderTicketByUser(
             @PathVariable Long ticketId,
             @PathVariable Long detailId
     ) {
-        return ResultUtil.data(ticketDetailAppService.getTicketDetailById(detailId));
+        return ticketDetailAppService.orderTicketByUser(ticketId);
     }
 
     // ===== CÁCH MỚI: dùng CacheStampedeGuard — SRP, reusable =====
